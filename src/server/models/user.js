@@ -24,15 +24,15 @@ module.exports = (sequelize, DataTypes) => {
       },
       local: {
         type: DataTypes.STRING(12),
-        allowNull: false,
+        allowNull: true,
       },
       birthday: {
         type: DataTypes.INTEGER(8),
-        allowNull:false,
+        allowNull:true,
       },
       email_auth:{
         type: DataTypes.STRING(1),
-        allowNull:false,
+        allowNull:true,
       },
       login_type:{
         type: DataTypes.STRING(10),
@@ -49,7 +49,7 @@ module.exports = (sequelize, DataTypes) => {
       },
       verify_key:{
         type: DataTypes.STRING(100),
-        allowNull:false,
+        allowNull:true,
       },
 
     },{

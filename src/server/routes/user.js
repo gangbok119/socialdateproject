@@ -261,19 +261,19 @@ router.patch('/profile', isLoggedIn, async (req, res, next) => {
 // 성명을 받아서 맞으면 id 반환 - 가려서 보내줄지 여부 신경써야할듯 
 // 작동은 함
 // 성명은 겹칠 수 있으므로 차후 이메일 주소를 받아 아이디 알려주거나 혹은 이메일 주소로 아이디 전송으로 바꿔야 함.
-router.post('/findId', isNotLoggedIn, async (req, res, next) => {
-  try {
-    const exUser = await db.User.findOne({
-      where: {
-        username: req.body.username
-      }
-    });
-    res.send(exUser.userId);
-  } catch (e) {
-    console.error(e);
-    next(e);
-  }
-});
+// router.post('/findId', isNotLoggedIn, async (req, res, next) => {
+//   try {
+//     const exUser = await db.User.findOne({
+//       where: {
+//         username: req.body.username
+//       }
+//     });
+//     res.send(exUser.userId);
+//   } catch (e) {
+//     console.error(e);
+//     next(e);
+//   }
+// });
 
 // 비밀번호 찾기
 router.post('/findPassword', isNotLoggedIn, async (req, res, next) => {
@@ -352,7 +352,7 @@ router.post('/resign', isLoggedIn, async (req, res, next) => {
 router.get('/userlist', async (req, res) => {
   try {
     const userlist = await db.User.findAll();
-    res.status(200).json(userlist);
+    res.status(200).json(response(true,null,userlist));
   } catch (e) {
     console.error(e);
     next(e);
@@ -362,8 +362,33 @@ router.get('/userlist', async (req, res) => {
   
 });
 
+// 카카오 로그인 관련
+router.get('/kakao', passport.authenticate('kakao'));
 
-//
+router.get('/kakao/callback', passport.authenticate('kakao', {
+  failureRedirect: '/',
+}), (req, res) => {
+ return res.status(200).json('success');
+});
+
+
+// 구글 로그인 관련
+router.get('/google', passport.authenticate('google',
+  {
+    scope: [ 'https://www.googleapis.com/auth/userinfo.profile','https://www.googleapis.com/auth/userinfo.email']
+
+    
+
+  }
+));
+
+router.get('/google/callback', passport.authenticate('google', {
+  failureRedirect: '/',
+}), (req, res) => {
+ return res.status(200).json('success');
+});
+
+
 
 
 
@@ -372,6 +397,6 @@ router.get('/userlist', async (req, res) => {
 // 회원가입 로그인 로그아웃 아이디찾기 비밀번호찾기 비밀번호수정
 // 프로필 올리기
 // 팔로우 crud
-// 코멘틑 crud
+// 코멘트 crud
 
 module.exports = router;

@@ -2,6 +2,17 @@ const express = require('express');
 const router = express.Router();
 const db = require('../models');
 
+
+// 보낼 데이터 형식 함수
+function response (a,b,c) {
+    return {
+      "status":a, // true false
+      "error":b, // status code - 200인 경우 null
+      "data":c  // 내용 있는 경우에만 
+    }
+  };
+  
+
 //following create
 router.post('/', async (req,res,next) => {
     try {
@@ -9,7 +20,7 @@ router.post('/', async (req,res,next) => {
             follower:req.body.follower,
             target:req.body.target
         });
-        res.status(200).json(newFollow);
+        res.status(200).json(response(true,null,newFollow));
     } catch (e) {
         console.error(e);
         next(e);
@@ -52,7 +63,8 @@ router.delete('/:id', async (req,res,next) => {
             where:{
                 id:req.params.id
             }
-        })
+        });
+        return res.status(200).json(response(true,null,null));
     } catch (e) {
         console.error(e);
         next(e);
@@ -88,7 +100,7 @@ router.get('/users', async (req, res, next) => {
         `SELECT target, COUNT(follower), users.nickname, users.local, users.content FROM follow JOIN users ON follow.target=users.id GROUP BY target ORDER BY COUNT(follower) DESC;`
         const result = await db.sequelize.query(sql);
             
-        res.send(result);
+        res.status(200).json(response(true,null,result));
         
     } catch(e) {
         console.error(e);
