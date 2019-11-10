@@ -1,3 +1,7 @@
+
+// JWT 검증 미들웨어
+const jwt = require('jsonwebtoken')
+require('dotenv').config();
 // 보낼 데이터 형식 함수
 function response (a,b,c) {
   return {
@@ -25,3 +29,23 @@ exports.isLoggedIn = (req, res, next) => {
       res.status(401).json(response(false,403,null));
     }
   };
+
+
+  exports.verifyToken = (req, res, next) => {
+    try {
+      req.decoded = jwt.verify(req.headers.authorization, process.env.COOKIE_SECRET);
+      return next();
+    } catch (error) {
+      if (error.name === 'TokenExpiredError') { // 유효기간 초과
+        return res.status(419).json({
+          code: 419,
+          message: '토큰이 만료되었습니다',
+        });
+      }
+      return res.status(401).json({
+        code: 401,
+        message: '유효하지 않은 토큰입니다',
+      });
+    }
+  };
+

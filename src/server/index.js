@@ -17,6 +17,7 @@ const passport = require("passport");
 const logger = require('./logger');
 const helmet = require('helmet');
 const hpp = require('hpp');
+const RedisStore = require('connect-redis')(expressSession);
 //
 const passportConfig = require("./passport");
 const db = require("./models");
@@ -53,7 +54,8 @@ const sessionOption = {
   cookie: {
     httpOnly: true,
     secure: false // https를 쓸 때 true
-  }
+  },
+ 
 };
 if (process.env.NODE_ENV === 'production') {
   sessionOption.proxy = true;

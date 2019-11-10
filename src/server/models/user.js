@@ -1,5 +1,5 @@
 module.exports = (sequelize, DataTypes) => {
-    return sequelize.define('user', {
+    const User = sequelize.define('user', {
       email: {
         type: DataTypes.STRING(45),
         unique: true,
@@ -13,10 +13,6 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING(10),
         allowNull: false,
         defaultValue: 'local',
-      },
-      photo: {
-        type: DataTypes.STRING(30),
-        allowNull: true,
       },
       nickname: {
         type: DataTypes.STRING(45),
@@ -36,7 +32,7 @@ module.exports = (sequelize, DataTypes) => {
       },
       login_type:{
         type: DataTypes.STRING(10),
-        allowNull:false,
+        allowNull:true,
       },
       create_date:{
         type:DataTypes.DATE,
@@ -54,6 +50,14 @@ module.exports = (sequelize, DataTypes) => {
 
     },{
       timestamps:false,
+      charset: 'utf8',
+      collate: 'utf8_general_ci',
     });
+
+    User.associate = (db) => {
+      db.User.hasMany(db.Photo, { as: 'Photos'});
+    };
+
+    return User;
 
 };

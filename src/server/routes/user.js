@@ -3,11 +3,14 @@ const bcrypt = require('bcrypt');
 const passport = require('passport');
 const multer = require('multer');
 const db = require('../models');
+const jwt = require('jsonwebtoken');
+require('dotenv').config();
 
 const fs = require('fs');
 const path = require('path');
 // 이메일 인증 모듈 부분
 const nodemailer = require('nodemailer');
+
 
 // 임시비밀번호 및 인증코드 작성 부분
 const math = require('math');
@@ -22,11 +25,11 @@ function makeRandomStr() {
 };
 
 // 보낼 데이터 형식 함수
-function response (a,b,c) {
+function response(a, b, c) {
   return {
-    "status":a, // true false
-    "error":b, // status code - 200인 경우 null
-    "data":c  // 내용 있는 경우에만 
+    "status": a, // true false
+    "error": b, // status code - 200인 경우 null
+    "data": c  // 내용 있는 경우에만 
   }
 };
 
@@ -34,7 +37,7 @@ function response (a,b,c) {
 
 
 // 로그인, 로그아웃 여부 검사 미들웨어
-const { isLoggedIn, isNotLoggedIn } = require('./middleware');
+const { isLoggedIn, isNotLoggedIn, verifyToken } = require('./middleware');
 
 const router = express.Router();
 
@@ -45,40 +48,58 @@ router.get('/', isLoggedIn, (req, res) => { // /api/user/
   return res.json(user);
 });
 
-// multer 설정
 fs.readdir('uploads', (error) => {
   if (error) {
     console.error('uploads 폴더가 없어 uploads 폴더를 생성합니다.');
     fs.mkdirSync('uploads');
   }
 });
-
 const upload = multer({
   storage: multer.diskStorage({
     destination(req, file, cb) {
       cb(null, 'uploads/');
     },
     filename(req, file, cb) {
-      console.log(file);
-      
       const ext = path.extname(file.originalname);
-      cb(null, path.basename(req.body.email, ext) + Date.now() + ext);
+      cb(null, path.basename(file.originalname, ext) + Date.now() + ext);
     },
   }),
   limits: { fileSize: 5 * 1024 * 1024 },
 });
 
 
+
+// 이미지 저장
+// key:img로 하여 파일 세 개 넣게 하면 됨.
+// user 테이블에 photo 컬럼에 세 개 넣는 로직.
+// 1. :id를 받아서 이를 통해 user를 특정하고 user.photo에 넣는 방법
+// 2. filename 자체를 특정 userprofile을 받게 하여 찾는 방법.
+router.post('/img', upload.fields([{ name: 'img1' }, { name: 'img2' }, { name: 'img3' }]), (req, res) => {
+  console.log(req.files);
+  console.log(req.files.img1[0].path);
+  console.log(req.files.img2[0].path);
+  console.log(req.files.img3[0].path);
+
+
+  return res.json('success');
+});
+
 // 회원가입
-router.post('/join',upload.single('join'), async (req, res, next) => { // POST /api/user 회원가입
+// upload.array('img',3),
+router.post('/join', upload.fields([{ name: 'img1' }, { name: 'img2' }, { name: 'img3' }]), async (req, res, next) => { // POST /api/user 회원가입
   try {
     // 인증코드 생성 부분
     let verify_key = makeRandomStr();
 
+    console.log(req.files);
+
     // 사진 url 생성부분
-    let photourl = `/uploads/${req.file.filename}`; // or 처리
-  
-    
+    let photourl = [req.files.img1[0].path, req.files.img2[0].path, req.files.img3[0].path]; // or 처리
+    // 
+    let e_auth = 'f';
+    if (req.body.login_type != 'email') {
+      e_auth = 't';
+    }
     const hashedPassword = await bcrypt.hash(req.body.password, 12); // salt는 10~13 사이로
     const newUser = await db.User.create({
 
@@ -86,14 +107,38 @@ router.post('/join',upload.single('join'), async (req, res, next) => { // POST /
       password: hashedPassword,
       gender: req.body.gender,
       nickname: req.body.nickname,
-      photo:photourl,
       local: req.body.local,
       birthday: req.body.birthday,
-      email_auth: 'f',
+      email_auth: 'email',
       login_type: req.body.login_type,
       create_date: new Date(),
       verify_key: verify_key
+    }).then(async (newUser) => {
+      let nub = newUser.id
+
+      const newPhoto1 = await db.Photo.create({
+        src: photourl[0],
+        order: 1,
+        UserId: nub
+      });
+      newUser.setPhotos(newPhoto1);
+
+
+      const newPhoto2 = await db.Photo.create({
+        src: photourl[1],
+        order: 2,
+        UserId: nub
+      });
+      newUser.setPhotos(newPhoto2);
+
+      const newPhoto3 = await db.Photo.create({
+        src: photourl[2],
+        order: 3,
+        UserId: nub
+      });
+      newUser.setPhotos(newPhoto3);
     });
+
 
     //인증 메일 발송 부분
     let Transporter = nodemailer.createTransport({
@@ -107,24 +152,27 @@ router.post('/join',upload.single('join'), async (req, res, next) => { // POST /
       }
 
     });
-    let url = 'http://localhost:3065/confirmEmail' + '?key=' + verify_key;
+    let url = '13.209.7.135:3000/api/user/confirmEmail' + '?key=' + verify_key;
     let mailOpt = {
       from: process.env.EMAIL_ID,
       to: req.body.email,
       subject: '이메일 인증을 진행해주세요',
       html: '<h1>이메일 인증을 위해 URL을 클릭해주세요.</h1><br>' + '<a>' + url + '</a>'
     };
-    // 전송
-    Transporter.sendMail(mailOpt, (err, res) => {
-      if (err) {
-        console.log(err);
-      } else {
-        console.log('email has been sent');
-      }
+    // 전송 - e_auth가 f인 경우에만 메일 전송
+    if (e_auth === 'f') {
+      Transporter.sendMail(mailOpt, (err, res) => {
+        if (err) {
+          console.log(err);
+        } else {
+          console.log('email has been sent');
+        }
 
-    });
+      });
+
+    }
     console.log(newUser);
-    return res.status(200).json(response(true,null,newUser));
+    return res.status(200).json(response(true, null, newUser));
   } catch (e) {
     console.error(e);
     // 에러 처리를 여기서
@@ -133,16 +181,18 @@ router.post('/join',upload.single('join'), async (req, res, next) => { // POST /
 });
 
 // 이메일 중복확인 url
-router.post('/emailDoubleCheck', async (req,res,next) => {
+router.post('/emailDoubleCheck', async (req, res, next) => {
   try {
-    const exUser = await db.User.findOne({where:{
-      email:req.body.email
-    }});
+    const exUser = await db.User.findOne({
+      where: {
+        email: req.body.email
+      }
+    });
     if (exUser) {
-      return res.json(response(false,303,null));
+      return res.json(response(false, 303, null));
     }
-   
-    return res.json(response(true,null,null));
+
+    return res.json(response(true, null, null));
   } catch (e) {
     console.error(e);
     next(e);
@@ -150,15 +200,17 @@ router.post('/emailDoubleCheck', async (req,res,next) => {
 });
 
 // 닉네임 중복확인 url
-router.post('/nickDoubleCheck', async (req,res,next) => {
+router.post('/nickDoubleCheck', async (req, res, next) => {
   try {
-    const exUser = await db.User.findOne({where:{
-      nickname:req.body.nickname
-    }});
+    const exUser = await db.User.findOne({
+      where: {
+        nickname: req.body.nickname
+      }
+    });
     if (exUser) {
-      return res.json(response(false,303,null));
+      return res.json(response(false, 303, null));
     }
-    return res.json(response(true,null,null));
+    return res.json(response(true, null, null));
   } catch (e) {
     console.error(e);
     next(e);
@@ -175,20 +227,20 @@ router.get('/confirmEmail', (req, res, next) => {
     }
   });
 
-  return res.status(200).json(response(true,null,null));
+  return res.status(200).json(response(true, null, null));
 
 });
 
 // 로그아웃
-router.post('/logout',isLoggedIn, (req, res) => { // /api/user/logout
+router.post('/logout', isLoggedIn, (req, res) => { // /api/user/logout
   req.logout();
   req.session.destroy();
-  res.status.json(response(true,null,null));
+  res.status.json(response(true, null, null));
 });
 
 // 로그인
-router.post('/login',isNotLoggedIn, (req, res, next) => { // POST /api/user/login
-  passport.authenticate('local', (err, user, info) => {
+router.post('/login', (req, res, next) => { // POST /api/user/login
+  passport.authenticate('local', { session: false }, (err, user, info) => {
     if (err) {
       console.error(err);
       return next(err);
@@ -197,24 +249,25 @@ router.post('/login',isNotLoggedIn, (req, res, next) => { // POST /api/user/logi
       // response로 고쳐야함
       return res.json(info.reason);
     }
-    return req.login(user, async (loginErr) => {
+    return req.login(user, { session: false }, async (loginErr) => {
       try {
         if (loginErr) {
-          
+
           return next(loginErr);
         }
-        const fullUser = await db.User.findOne({
-          where: { id: user.id },
+        const token = jwt.sign(user.toJSON(), process.env.COOKIE_SECRET);
 
-        });
-        console.log(fullUser);
-        return res.status(200).json(response(true,null,fullUser));
+        return res.status(200).json(response(true, null, { user, token }));
       } catch (e) {
         next(e);
       }
     });
   })(req, res, next);
 });
+
+// router.get('/token',passport.authenticate('jwt',{session:false}),)
+
+
 
 // 비밀번호 수정
 router.patch('/password', isLoggedIn, async (req, res, next) => {
@@ -226,7 +279,7 @@ router.patch('/password', isLoggedIn, async (req, res, next) => {
         id: req.user.id
       }
     });
-    return res.status(200).json(response(true,null,null));
+    return res.status(200).json(response(true, null, null));
   } catch (e) {
     console.error(e);
     next(e);
@@ -250,12 +303,20 @@ router.patch('/profile', isLoggedIn, async (req, res, next) => {
     }, {
       where: { id: req.user.id },
     });
-    return res.status(200).json(response(true,null,exUser));
+    return res.status(200).json(response(true, null, exUser));
   } catch (e) {
     console.error(e);
     next(e);
   }
 });
+
+// 프로필 사진 수정
+// uploads를 single로 하고 url을 받아서 해당 부분만 삭제하는걸로
+// router.post('/img/:url',uploads.single('img'), (req,res,next) => {
+//  const exPhoto = db.Photo.update({src:req.file.path}{where:{src:req.params.url}})
+//});
+// url로 user.photo 찾고 해당 업데이트 + uploads폴더 파일 삭제 
+// 
 
 // 아이디 찾기
 // 성명을 받아서 맞으면 id 반환 - 가려서 보내줄지 여부 신경써야할듯 
@@ -308,7 +369,7 @@ router.post('/findPassword', isNotLoggedIn, async (req, res, next) => {
       }
 
     });
-    
+
     let mailOpt = {
       from: process.env.EMAIL_ID,
       to: exUser.email,
@@ -324,7 +385,7 @@ router.post('/findPassword', isNotLoggedIn, async (req, res, next) => {
       }
 
     });
-    return res.status(200).json(response(true,null,null));
+    return res.status(200).json(response(true, null, null));
   } catch (e) {
     console.error(e);
     next(e);
@@ -340,7 +401,7 @@ router.post('/resign', isLoggedIn, async (req, res, next) => {
       }
     });
     exUser.update({ email_verified: 'f' });
-    return res.status(200).json(response(true,null,null));
+    return res.status(200).json(response(true, null, null));
   } catch (e) {
     console.error(e);
     next(e);
@@ -349,17 +410,17 @@ router.post('/resign', isLoggedIn, async (req, res, next) => {
 
 
 // user all list (미완성)
-router.get('/userlist', async (req, res) => {
+router.get('/userlist', verifyToken, async (req, res) => {
   try {
     const userlist = await db.User.findAll();
-    res.status(200).json(response(true,null,userlist));
+    res.status(200).json(response(true, null, userlist));
   } catch (e) {
     console.error(e);
     next(e);
   }
 
 
-  
+
 });
 
 // 카카오 로그인 관련
@@ -368,16 +429,16 @@ router.get('/kakao', passport.authenticate('kakao'));
 router.get('/kakao/callback', passport.authenticate('kakao', {
   failureRedirect: '/',
 }), (req, res) => {
- return res.status(200).json('success');
+  return res.status(200).json('success');
 });
 
 
 // 구글 로그인 관련
 router.get('/google', passport.authenticate('google',
   {
-    scope: [ 'https://www.googleapis.com/auth/userinfo.profile','https://www.googleapis.com/auth/userinfo.email']
+    scope: ['https://www.googleapis.com/auth/userinfo.profile', 'https://www.googleapis.com/auth/userinfo.email']
 
-    
+
 
   }
 ));
@@ -385,11 +446,28 @@ router.get('/google', passport.authenticate('google',
 router.get('/google/callback', passport.authenticate('google', {
   failureRedirect: '/',
 }), (req, res) => {
- return res.status(200).json('success');
+  return res.status(200).json('success');
 });
 
 
-
+// tokencheck API
+// email컬럼에 해당 snsid 있는지 확인 있으면 true 없으면 false
+router.post('/tokencheck', async (req, res, next) => {
+  try {
+    const exUser = await db.User.findOne({
+      where: {
+        email: req.body.email
+      }
+    });
+    if (exUser) {
+      return res.json(response(true, null, null));
+    }
+    return res.json(response(false, null, null));
+  } catch (e) {
+    console.error(e);
+    next(e);
+  }
+});
 
 
 //

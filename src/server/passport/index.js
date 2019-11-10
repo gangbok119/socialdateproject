@@ -3,6 +3,7 @@ const db = require('../models');
 const local = require('./localstrategy');
 const kakao = require('./kakaoStrategy');
 const google = require('./googleStrategy');
+const jwt = require('./jwtStrategy');
 module.exports = () => {
   passport.serializeUser((user, done) => { // 서버쪽에 [{ id: 3, cookie: 'asdfgh' }]
     return done(null, user.id);
@@ -25,6 +26,8 @@ module.exports = () => {
   local(passport);
   kakao(passport);
   google(passport);
+  jwt(passport);
+
 };
 
 // 프론트에서 서버로는 cookie만 보내요(asdfgh)
