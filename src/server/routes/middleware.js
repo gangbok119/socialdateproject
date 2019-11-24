@@ -1,5 +1,5 @@
 
-// JWT 검증 미들웨어
+
 const jwt = require('jsonwebtoken')
 require('dotenv').config();
 // 보낼 데이터 형식 함수
@@ -30,7 +30,7 @@ exports.isLoggedIn = (req, res, next) => {
     }
   };
 
-
+  // JWT 검증 미들웨어
   exports.verifyToken = (req, res, next) => {
     try {
       req.decoded = jwt.verify(req.headers.authorization, process.env.COOKIE_SECRET);

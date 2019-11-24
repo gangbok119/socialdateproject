@@ -18,10 +18,8 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING(45),
         allowNull: false,
       },
-      local: {
-        type: DataTypes.STRING(12),
-        allowNull: true,
-      },
+     
+      
       birthday: {
         type: DataTypes.INTEGER(8),
         allowNull:true,
@@ -57,6 +55,10 @@ module.exports = (sequelize, DataTypes) => {
     User.associate = (db) => {
       db.User.hasMany(db.Photo, { as: 'Photos'});
     };
+
+    // User.associate = (db) => {
+    //   db.User.belongsTo(db.Membership)
+    // };
 
     return User;
 

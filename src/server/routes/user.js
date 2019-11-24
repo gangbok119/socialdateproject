@@ -48,6 +48,8 @@ router.get('/', isLoggedIn, (req, res) => { // /api/user/
   return res.json(user);
 });
 
+
+// 이미지 업로드 미들웨어 - multer - uploads폴더에 올라감
 fs.readdir('uploads', (error) => {
   if (error) {
     console.error('uploads 폴더가 없어 uploads 폴더를 생성합니다.');
@@ -64,28 +66,12 @@ const upload = multer({
       cb(null, path.basename(file.originalname, ext) + Date.now() + ext);
     },
   }),
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: 20 * 1024 * 1024 },
 });
 
-
-
-// 이미지 저장
-// key:img로 하여 파일 세 개 넣게 하면 됨.
-// user 테이블에 photo 컬럼에 세 개 넣는 로직.
-// 1. :id를 받아서 이를 통해 user를 특정하고 user.photo에 넣는 방법
-// 2. filename 자체를 특정 userprofile을 받게 하여 찾는 방법.
-router.post('/img', upload.fields([{ name: 'img1' }, { name: 'img2' }, { name: 'img3' }]), (req, res) => {
-  console.log(req.files);
-  console.log(req.files.img1[0].path);
-  console.log(req.files.img2[0].path);
-  console.log(req.files.img3[0].path);
-
-
-  return res.json('success');
-});
 
 // 회원가입
-// upload.array('img',3),
+// upload.field('img',3), - img1,2,3 key - 이미지 파일 value
 router.post('/join', upload.fields([{ name: 'img1' }, { name: 'img2' }, { name: 'img3' }]), async (req, res, next) => { // POST /api/user 회원가입
   try {
     // 인증코드 생성 부분
@@ -95,7 +81,9 @@ router.post('/join', upload.fields([{ name: 'img1' }, { name: 'img2' }, { name: 
 
     // 사진 url 생성부분
     let photourl = [req.files.img1[0].path, req.files.img2[0].path, req.files.img3[0].path]; // or 처리
-    // 
+
+
+    // user 로그인 종류가 local이 아니면 바로 로그인 가능하게 함. 
     let e_auth = 'f';
     if (req.body.login_type != 'email') {
       e_auth = 't';
@@ -107,37 +95,38 @@ router.post('/join', upload.fields([{ name: 'img1' }, { name: 'img2' }, { name: 
       password: hashedPassword,
       gender: req.body.gender,
       nickname: req.body.nickname,
-      local: req.body.local,
+
       birthday: req.body.birthday,
-      email_auth: 'email',
+      email_auth: e_auth,
       login_type: req.body.login_type,
       create_date: new Date(),
       verify_key: verify_key
-    }).then(async (newUser) => {
-      let nub = newUser.id
-
-      const newPhoto1 = await db.Photo.create({
-        src: photourl[0],
-        order: 1,
-        UserId: nub
-      });
-      newUser.setPhotos(newPhoto1);
-
-
-      const newPhoto2 = await db.Photo.create({
-        src: photourl[1],
-        order: 2,
-        UserId: nub
-      });
-      newUser.setPhotos(newPhoto2);
-
-      const newPhoto3 = await db.Photo.create({
-        src: photourl[2],
-        order: 3,
-        UserId: nub
-      });
-      newUser.setPhotos(newPhoto3);
     });
+    let nub = newUser.id
+
+
+    const newPhoto1 = await db.Photo.create({
+      src: photourl[0],
+      order: 1,
+      UserId: nub
+    });
+    newUser.addPhotos(newPhoto1);
+
+
+    const newPhoto2 = await db.Photo.create({
+      src: photourl[1],
+      order: 2,
+      UserId: nub
+    });
+    newUser.addPhotos(newPhoto2);
+
+    const newPhoto3 = await db.Photo.create({
+      src: photourl[2],
+      order: 3,
+      UserId: nub
+    });
+    newUser.addPhotos(newPhoto3);
+
 
 
     //인증 메일 발송 부분
@@ -171,8 +160,12 @@ router.post('/join', upload.fields([{ name: 'img1' }, { name: 'img2' }, { name: 
       });
 
     }
-    console.log(newUser);
-    return res.status(200).json(response(true, null, newUser));
+
+    // user데이터를 json화하여 payload에 넣으면 생성 가능.
+    let value = JSON.stringify(newUser);
+    const token = jwt.sign(value, process.env.COOKIE_SECRET);
+
+    return res.status(200).json(response(true, null, { value, token }));
   } catch (e) {
     console.error(e);
     // 에러 처리를 여기서
@@ -231,7 +224,7 @@ router.get('/confirmEmail', (req, res, next) => {
 
 });
 
-// 로그아웃
+// 로그아웃 - jwt 쓰게되면 다른 처리가 필요할듯
 router.post('/logout', isLoggedIn, (req, res) => { // /api/user/logout
   req.logout();
   req.session.destroy();
@@ -239,6 +232,7 @@ router.post('/logout', isLoggedIn, (req, res) => { // /api/user/logout
 });
 
 // 로그인
+// session에 토큰이 들어있는지 확인.
 router.post('/login', (req, res, next) => { // POST /api/user/login
   passport.authenticate('local', { session: false }, (err, user, info) => {
     if (err) {
@@ -255,9 +249,10 @@ router.post('/login', (req, res, next) => { // POST /api/user/login
 
           return next(loginErr);
         }
-        const token = jwt.sign(user.toJSON(), process.env.COOKIE_SECRET);
-
-        return res.status(200).json(response(true, null, { user, token }));
+        const value = JSON.stringify(user)
+        const token = jwt.sign(value, process.env.COOKIE_SECRET);
+        
+        return res.status(200).json(response(true, null, token));
       } catch (e) {
         next(e);
       }
@@ -286,9 +281,24 @@ router.patch('/password', isLoggedIn, async (req, res, next) => {
   }
 });
 
+// 프로필 수정요청 부분 - get api에서 필요한 부분을 보내줘야함. 포토까지 추가해서
+// 
+router.get('/profile', async (req, res, next) => {
+  try {
+    // token을 decode해서 그 id로 where를 걸어줌
+    const exUser = await db.User.findone();
+    // value에 photos부분도 추가해서 보냄.
+    return res.status(200).json();
+  } catch (e) {
+    console.error(e);
+    next(e);
+  }
+})
 
-// 프로필 수정 부분 만들어야 함.
-router.patch('/profile', isLoggedIn, async (req, res, next) => {
+
+// 프로필 수정 부분 만들어야 함. - 비밀번호는 삭제.
+// photos까지 다 가져와서 한번에 통짜로 수정하게 함. upload 걸고 삭제하는 부분까지 다 넣음.
+router.patch('/profile', async (req, res, next) => {
   try {
     const hashedPassword = await bcrypt.hash(req.body.password, 12);
     const exUser = await db.User.update({
@@ -296,7 +306,7 @@ router.patch('/profile', isLoggedIn, async (req, res, next) => {
       password: hashedPassword,
       gender: req.body.gender,
       nickname: req.body.nickname,
-      local: req.body.local,
+
       birthday: req.body.birthday,
 
 
@@ -312,9 +322,27 @@ router.patch('/profile', isLoggedIn, async (req, res, next) => {
 
 // 프로필 사진 수정
 // uploads를 single로 하고 url을 받아서 해당 부분만 삭제하는걸로
-// router.post('/img/:url',uploads.single('img'), (req,res,next) => {
-//  const exPhoto = db.Photo.update({src:req.file.path}{where:{src:req.params.url}})
-//});
+router.post('/img/:id', upload.single('img'), async (req, res, next) => {
+  try {
+    const newphoto = await db.Photo.findOne({ where: { id: req.params.id } });
+    let path = newphoto.src;
+    db.Photo.update({ src: req.file.path }, { where: { id: req.params.id } });
+
+    var resultHandler = function (err) {
+      if (err) {
+        console.log("unlink failed", err);
+      } else {
+        console.log("file deleted");
+      }
+    }
+    fs.unlink(path, resultHandler);
+    return res.status(200).json(response(true, null, null));
+  } catch (e) {
+    console.error(e);
+    next(e);
+  }
+
+});
 // url로 user.photo 찾고 해당 업데이트 + uploads폴더 파일 삭제 
 // 
 
@@ -409,18 +437,16 @@ router.post('/resign', isLoggedIn, async (req, res, next) => {
 });
 
 
-// user all list (미완성)
-router.get('/userlist', verifyToken, async (req, res) => {
-  try {
-    const userlist = await db.User.findAll();
-    res.status(200).json(response(true, null, userlist));
-  } catch (e) {
-    console.error(e);
-    next(e);
-  }
-
-
-
+// user all list (미완성) - photo 1번 넣어야 하고verifyToken
+// 로그인 안되면 인기순 로그인 되면 거리순 뭐 이런식으로 보여주는 형태가 달라져야함.
+router.get('/userlist',async (req, res) => {
+ 
+    // const userlist = await db.Photo.findAll({attributes:['src'],where:{order:1},include:[{model:db.User,attributes:['email']}]});
+    const userlist = await db.User.findAll({attributes:['email','gender','nickname','birthday','content'],include:[{model:db.Photo, as:'Photos',attributes:['src'],where:{order:1}}]});
+    console.log(typeof(userlist));
+    return res.status(200).json(userlist);
+    
+    
 });
 
 // 카카오 로그인 관련
@@ -459,8 +485,10 @@ router.post('/tokencheck', async (req, res, next) => {
         email: req.body.email
       }
     });
+    const payl = JSON.stringify(exUser);
+    const token = jwt.sign(payl, process.env.COOKIE_SECRET);
     if (exUser) {
-      return res.json(response(true, null, null));
+      return res.json(response(true, null, token));
     }
     return res.json(response(false, null, null));
   } catch (e) {
@@ -470,7 +498,30 @@ router.post('/tokencheck', async (req, res, next) => {
 });
 
 
-//
+// jwt 유효성 검사 API
+router.get('/jwtcheck', (req, res) => {
+  try {
+    req.decoded = jwt.verify(req.headers.authorization, process.env.COOKIE_SECRET);
+    return res.status(200).json(response(true, null, null));
+  } catch (error) {
+    if (error.name === 'TokenExpiredError') { // 유효기간 초과
+      return res.status(419).json(response(false, 419, { message: '토큰이 만료되었습니다' }));
+    }
+    return res.status(401).json(response(false, 401, { message: '유효하지 않은 토큰입니다' }));
+  }
+});
+
+// photos 제대로 가져오는지 테스트 api
+// router.get('/getphoto:id', async (req,res,next) => {
+//   try {
+//     const exUser = await db.User.findOne({where:{id:req.params.id}});
+//     const photos = await exUser.getPhotos();
+//     return res.status(200).json(photos);
+//   } catch (e) {
+//     console.error(e);
+//     next(e);
+//   }
+// });
 
 // 회원가입 로그인 로그아웃 아이디찾기 비밀번호찾기 비밀번호수정
 // 프로필 올리기
